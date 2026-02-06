@@ -125,17 +125,14 @@ def benchmark_host_device(
                         
                         t2 = time.perf_counter()
                         # _ = jax.device_get(tensor_stack)
+                        tensors_on_host = []
                         for device_tensor in tensors_on_device:
-                            _ = jax.device_get(device_tensor)
-                            # _ = jax.device_put(device_tensor, jax.devices("cpu")[0])
+                            # _ = jax.device_get(device_tensor)
+                            tensors_on_host.append(jax.device_put(device_tensor, jax.devices("cpu")[0]))
+                        for host_tensor in tensors_on_host:
+                            host_tensor.block_until_ready()
                         t3 = time.perf_counter()
-                        print(f"first device_get time: {t3 - t2}")
-
-                        t4 = time.perf_counter()
-                        for device_tensor in tensors_on_device:
-                            _ = jax.device_get(device_tensor)
-                        t5 = time.perf_counter()
-                        print(f"second device_get time: {t5 - t4}")
+                        print(f"device_put to CPU time: {t3 - t2}")
 
                         d2h_perf.append((t3 - t2) * 1000)
                         # tensor_stack.delete()
