@@ -5,7 +5,7 @@ import os
 from typing import Any, Dict, Tuple, List
 
 import jax
-from jax import sharding
+from jax import numpy as jnp
 import numpy as np
 from benchmark_utils import MetricsStatistics
 
@@ -25,7 +25,7 @@ def benchmark_host_device(
     num_runs: int = 100,
     trace_dir: str = None,
 ) -> Dict[str, Any]:
-    """Benchmarks H2D/D2H transfer using simple device_put/device_get."""
+    """Benchmarks H2D/D2H transfer using device_put/device_get."""
     
     num_elements = 1024 * 1024 * data_size_mib // np.dtype(np.float32).itemsize
     
@@ -33,8 +33,13 @@ def benchmark_host_device(
     column = 128
     host_data = np.random.normal(size=(num_elements // column, column)).astype(np.float32)
     
+    # Used in pipelined flow
+    # TODO: turn into a param
+    num_devices_to_perform_h2d = 1
+    target_devices = jax.devices()[:num_devices_to_perform_h2d]
+
     print(
-        f"Benchmarking Transfer with Data Size: {data_size_mib} MB for {num_runs} iterations",
+        f"Benchmarking Transfer with Data Size: {data_size_mib} MB for {num_runs} iterations with {h2d_type=}",
         flush=True
     )
 
@@ -116,14 +121,24 @@ def benchmark_host_device(
                         del chunks
 
                         # D2H
-                        tensor_stack = jnp.vstack(tensors_on_device)
+                        # tensor_stack = jnp.vstack(tensors_on_device)
                         
                         t2 = time.perf_counter()
-                        _ = jax.device_get(tensor_stack)
+                        # _ = jax.device_get(tensor_stack)
+                        for device_tensor in tensors_on_device:
+                            _ = jax.device_get(device_tensor)
+                            # _ = jax.device_put(device_tensor, jax.devices("cpu")[0])
                         t3 = time.perf_counter()
+                        print(f"first device_get time: {t3 - t2}")
+
+                        t4 = time.perf_counter()
+                        for device_tensor in tensors_on_device:
+                            _ = jax.device_get(device_tensor)
+                        t5 = time.perf_counter()
+                        print(f"second device_get time: {t5 - t4}")
 
                         d2h_perf.append((t3 - t2) * 1000)
-                        tensor_stack.delete()
+                        # tensor_stack.delete()
                         for device_tensor in tensors_on_device:
                             device_tensor.delete()
                         del tensors_on_device
